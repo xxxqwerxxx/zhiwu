@@ -1,0 +1,810 @@
+你反馈的现象是：**图片初次缩放时，按钮仍然会跟着图片缩放一瞬间，然后才恢复正常大小**。
+这是因为按钮的 `scale(1/inst.scale)`
+反缩放是在图片父容器（wrapper）缩放后才生效，渲染时有同步延迟，导致视觉上有“跟着缩放一帧”的现象。
+--- ## 彻底解决方案 ### 原因 - 按钮是 wrapper 的子元素，wrapper
+缩放时，按钮会先被缩放，然后再反向缩放，渲染有延迟。 -
+只有将按钮**移出缩放容器**，即让按钮和图片不在同一个缩放上下文，才能彻底避免这个问题。
+### 解决办法 - **将按钮（功能按钮、层级按钮、控制点）渲染到 pot-area
+的最外层**，用绝对定位（absolute）根据图片的实际位置、缩放、旋转计算出按钮的准确位置。
+- 这样按钮不会被图片的 scale/rotate
+影响，视觉上始终大小不变，且不会有“跟着缩放一帧”的现象。 --- ##
+优化后核心实现思路 1.
+渲染所有图片（wrapper）时，记录每个图片的实际中心点、缩放、旋转等信息。 2.
+渲染按钮时，**单独渲染**，用 JS 计算按钮的绝对位置（如图片下方、右侧等），并用
+transform 只做旋转，不做缩放。 3. 控制点同理，单独渲染，位置用三角函数计算。 ---
+## 完整优化代码 ```html
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <title>植物拖拽花盆（按钮绝对定位优化）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "微软雅黑", Arial, sans-serif;
+        background: #f5fff5;
+        overflow: hidden;
+      }
+      body {
+        height: 100vh;
+        width: 100vw;
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100vw;
+      }
+      .plant-selector-bar {
+        height: 15vh;
+        min-height: 80px;
+        max-height: 160px;
+        background: #d0f5d0;
+        display: flex;
+        align-items: flex-start;
+        overflow-x: auto;
+        padding: 10px 0;
+        box-shadow: 0 2px 8px #0001;
+        z-index: 100;
+      }
+      .plant-item {
+        flex: 0 0 auto;
+        width: 80px;
+        margin: 0 10px;
+        text-align: center;
+        cursor: grab;
+        user-select: none;
+      }
+      .plant-item img {
+        width: 60px;
+        height: 60px;
+        border-radius: 12px;
+        border: 2px solid #b0e0b0;
+        background: #fff;
+        transition: box-shadow 0.2s;
+      }
+      .plant-item img:active {
+        box-shadow: 0 0 8px #6c6;
+      }
+      .plant-item span {
+        display: block;
+        margin-top: 4px;
+        font-size: 14px;
+        color: #2a4;
+      }
+      .main-area {
+        position: relative;
+        flex: 1 1 0;
+        height: 85vh;
+        min-height: 300px;
+        width: 100vw;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f5fff5;
+        overflow: hidden;
+      }
+      .pot-area {
+        position: relative;
+        width: 400px;
+        height: 400px;
+        min-width: 220px;
+        min-height: 220px;
+        max-width: 90vw;
+        max-height: 90vh;
+        margin: 0 auto;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        background: transparent;
+        touch-action: none;
+      }
+      .pot-img {
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        width: 260px;
+        height: 160px;
+        transform: translateX(-50%);
+        z-index: 0;
+        pointer-events: none;
+        user-select: none;
+      }
+      .plant-on-pot-wrapper {
+        position: absolute;
+        touch-action: none;
+        pointer-events: auto;
+      }
+      .plant-on-pot {
+        width: 70px;
+        height: 70px;
+        border-radius: 12px;
+        user-select: none;
+        pointer-events: none;
+        display: block;
+        box-sizing: border-box;
+        background: #fff;
+        box-shadow: 0 2px 8px #0002;
+        transition: box-shadow 0.2s;
+      }
+      .plant-on-pot.selected {
+        box-shadow: 0 0 0 4px #6c6a, 0 2px 8px #0002;
+        z-index: 99 !important;
+      }
+      .pot-area .floating-btn,
+      .pot-area .floating-layer-btn,
+      .pot-area .floating-handle,
+      .pot-area .floating-rotate {
+        position: absolute;
+        z-index: 300;
+        pointer-events: auto;
+        user-select: none;
+        transition: box-shadow 0.2s, background 0.2s;
+      }
+      .floating-btn-group {
+        display: flex;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.98);
+        border-radius: 12px;
+        padding: 6px 14px;
+        box-shadow: 0 4px 16px #0002;
+        border: 1.5px solid #b0e0b0;
+        font-size: 16px;
+        align-items: center;
+      }
+      .floating-btn {
+        background: linear-gradient(145deg, #e0ffe0 60%, #b0e0b0 100%);
+        border: 1.5px solid #6c6;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        font-size: 18px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px #0001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        outline: none;
+      }
+      .floating-btn:hover {
+        background: linear-gradient(145deg, #b0e0b0 60%, #e0ffe0 100%);
+        box-shadow: 0 4px 16px #6c6a;
+      }
+      .floating-layer-btn-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: rgba(255, 255, 255, 0.98);
+        border-radius: 12px;
+        padding: 6px 4px;
+        box-shadow: 0 4px 16px #0002;
+        border: 1.5px solid #b0e0b0;
+        align-items: center;
+      }
+      .floating-layer-btn {
+        background: linear-gradient(145deg, #e0ffe0 60%, #b0e0b0 100%);
+        border: 1.5px solid #6c6;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+        cursor: pointer;
+        box-shadow: 0 2px 8px #0001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        outline: none;
+      }
+      .floating-layer-btn:hover {
+        background: linear-gradient(145deg, #b0e0b0 60%, #e0ffe0 100%);
+        box-shadow: 0 4px 16px #6c6a;
+      }
+      .floating-handle {
+        width: 22px;
+        height: 22px;
+        background: linear-gradient(145deg, #e0ffe0 60%, #b0e0b0 100%);
+        border: 2px solid #6c6;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px #0002;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .floating-handle svg {
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+      }
+      .floating-handle:hover {
+        background: linear-gradient(145deg, #b0e0b0 60%, #e0ffe0 100%);
+        box-shadow: 0 4px 16px #6c6a;
+      }
+      .floating-rotate {
+        width: 22px;
+        height: 22px;
+        background: linear-gradient(145deg, #fff 60%, #e0ffe0 100%);
+        border: 2px solid #2a4;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px #0002;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: grab;
+      }
+      .floating-rotate svg {
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+      }
+      .floating-rotate:hover {
+        background: linear-gradient(145deg, #b0e0b0 60%, #e0ffe0 100%);
+        box-shadow: 0 4px 16px #6c6a;
+      }
+      @media (max-width: 600px) {
+        .pot-area {
+          width: 98vw;
+          height: 60vw;
+          min-width: 160px;
+          min-height: 120px;
+        }
+        .pot-img {
+          width: 120px;
+          height: 80px;
+        }
+        .plant-on-pot {
+          width: 40px;
+          height: 40px;
+        }
+        .floating-btn,
+        .floating-rotate,
+        .floating-handle {
+          width: 16px;
+          height: 16px;
+          font-size: 14px;
+        }
+        .floating-layer-btn {
+          width: 20px;
+          height: 20px;
+          font-size: 12px;
+        }
+        .floating-btn-group {
+          padding: 4px 6px;
+        }
+        .floating-layer-btn-group {
+          padding: 4px 2px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- 植物选择区 -->
+      <div class="plant-selector-bar" id="plantSelectorBar"></div>
+      <!-- 花盆区域 -->
+      <div class="main-area">
+        <div class="pot-area" id="potArea">
+          <img
+            class="pot-img"
+            src="./images/plant.jpgg"
+            alt="花盆"
+            draggable="false"
+          />
+        </div>
+      </div>
+    </div>
+    <script>
+      // 植物素材
+      const plants = [
+        { name: "仙人掌", img: "./images/plant.jpg" },
+        { name: "向日葵", img: "./images/plant.jpg" }
+        // { name: "玫瑰", img: "https://img.icons8.com/color/96/rose.png" },
+        // { name: "郁金香", img: "https://img.icons8.com/color/96/tulip.png" },
+        // { name: "树苗", img: "https://img.icons8.com/color/96/seedling.png" },
+        // { name: "多肉", img: "https://img.icons8.com/color/96/succulent-plant.png" },
+        // { name: "竹子", img: "https://img.icons8.com/color/96/bamboo.png" }
+      ];
+
+      // 花盆上的植物实例
+      let plantInstances = [];
+      let selectedId = null;
+
+      // 生成唯一ID
+      function uuid() {
+        return "xxxxxx".replace(/x/g, () =>
+          ((Math.random() * 36) | 0).toString(36)
+        );
+      }
+
+      // 渲染植物选择区
+      const selectorBar = document.getElementById("plantSelectorBar");
+      plants.forEach((p, idx) => {
+        const div = document.createElement("div");
+        div.className = "plant-item";
+        div.draggable = true;
+        div.innerHTML = `<img src="${p.img}" draggable="false"><span>${p.name}</span>`;
+        div.addEventListener("dragstart", e => {
+          e.dataTransfer.setData(
+            "text/plain",
+            JSON.stringify({ plantIdx: idx })
+          );
+          e.dataTransfer.effectAllowed = "copy";
+        });
+        selectorBar.appendChild(div);
+      });
+
+      // 花盆区域
+      const potArea = document.getElementById("potArea");
+      const potImg = potArea.querySelector(".pot-img");
+
+      // 拖拽到花盆
+      potArea.addEventListener("dragover", e => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      });
+      potArea.addEventListener("drop", e => {
+        e.preventDefault();
+        const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+        if (typeof data.plantIdx === "number") {
+          // 新植物实例
+          const rect = potArea.getBoundingClientRect();
+          const x = e.clientX - rect.left - 35;
+          const y = e.clientY - rect.top - 35;
+          plantInstances.push({
+            id: uuid(),
+            plantIdx: data.plantIdx,
+            x,
+            y,
+            z: plantInstances.length + 1,
+            scale: 1,
+            rotate: 0
+          });
+          selectedId = null;
+          renderPlantsOnPot();
+        }
+        if (data.moveId) {
+          // 拖动已存在的植物
+          const rect = potArea.getBoundingClientRect();
+          const x = e.clientX - rect.left - 35;
+          const y = e.clientY - rect.top - 35;
+          const inst = plantInstances.find(p => p.id === data.moveId);
+          if (inst) {
+            inst.x = x;
+            inst.y = y;
+            renderPlantsOnPot();
+          }
+        }
+      });
+
+      // 渲染花盆上的植物
+      function renderPlantsOnPot() {
+        // 清除旧植物和所有浮动按钮
+        Array.from(
+          potArea.querySelectorAll(
+            ".plant-on-pot-wrapper, .floating-btn-group, .floating-layer-btn-group, .floating-handle, .floating-rotate"
+          )
+        ).forEach(el => el.remove());
+        // 按z排序
+        plantInstances.sort((a, b) => a.z - b.z);
+        plantInstances.forEach((inst, idx) => {
+          // wrapper
+          const wrapper = document.createElement("div");
+          wrapper.className = "plant-on-pot-wrapper";
+          wrapper.style.left = inst.x + "px";
+          wrapper.style.top = inst.y + "px";
+          wrapper.style.zIndex = inst.z;
+          wrapper.style.width = "70px";
+          wrapper.style.height = "70px";
+          wrapper.style.transform = `scale(${inst.scale}) rotate(${inst.rotate}deg)`;
+          wrapper.dataset.id = inst.id;
+          wrapper.style.transformOrigin = "35px 35px";
+
+          // 拖动
+          let dragOffset = null;
+          let isDragging = false;
+          wrapper.addEventListener("mousedown", e => {
+            if (
+              e.target.classList.contains("floating-handle") ||
+              e.target.classList.contains("floating-rotate")
+            )
+              return;
+            selectedId = inst.id;
+            renderPlantsOnPot();
+            dragOffset = { x: e.clientX - inst.x, y: e.clientY - inst.y };
+            isDragging = true;
+            document.body.style.userSelect = "none";
+          });
+          document.addEventListener("mousemove", function moveHandler(ev) {
+            if (isDragging && selectedId === inst.id) {
+              inst.x = ev.clientX - dragOffset.x;
+              inst.y = ev.clientY - dragOffset.y;
+              wrapper.style.left = inst.x + "px";
+              wrapper.style.top = inst.y + "px";
+              updateFloatingButtons(inst);
+            }
+          });
+          document.addEventListener("mouseup", function upHandler(ev) {
+            if (isDragging && selectedId === inst.id) {
+              isDragging = false;
+              document.body.style.userSelect = "";
+              renderPlantsOnPot();
+            }
+          });
+
+          // 触屏拖动
+          let touchDragging = false;
+          wrapper.addEventListener("touchstart", function(e) {
+            if (
+              e.target.classList.contains("floating-handle") ||
+              e.target.classList.contains("floating-rotate")
+            )
+              return;
+            selectedId = inst.id;
+            renderPlantsOnPot();
+            let touch = e.touches[0];
+            let offsetX = touch.clientX - inst.x;
+            let offsetY = touch.clientY - inst.y;
+            touchDragging = true;
+            function moveHandler(ev) {
+              if (!touchDragging) return;
+              let t = ev.touches[0];
+              inst.x = t.clientX - offsetX;
+              inst.y = t.clientY - offsetY;
+              wrapper.style.left = inst.x + "px";
+              wrapper.style.top = inst.y + "px";
+              updateFloatingButtons(inst);
+              ev.preventDefault();
+            }
+            function endHandler(ev) {
+              touchDragging = false;
+              document.removeEventListener("touchmove", moveHandler);
+              document.removeEventListener("touchend", endHandler);
+              renderPlantsOnPot();
+            }
+            document.addEventListener("touchmove", moveHandler, {
+              passive: false
+            });
+            document.addEventListener("touchend", endHandler);
+            e.stopPropagation();
+          });
+
+          // 图片
+          const el = document.createElement("img");
+          el.src = plants[inst.plantIdx].img;
+          el.className =
+            "plant-on-pot" + (selectedId === inst.id ? " selected" : "");
+          el.draggable = false;
+          wrapper.appendChild(el);
+
+          potArea.appendChild(wrapper);
+
+          // 选中时渲染浮动按钮和控制点
+          if (selectedId === inst.id) {
+            renderFloatingButtons(inst);
+          }
+        });
+      }
+
+      // 计算图片中心点和变换后点
+      function getTransformedPoint(inst, offsetX, offsetY) {
+        // 图片中心点
+        const cx = inst.x + 35;
+        const cy = inst.y + 35;
+        // 旋转
+        const rad = (inst.rotate * Math.PI) / 180;
+        const dx = offsetX * inst.scale;
+        const dy = offsetY * inst.scale;
+        const rx = Math.cos(rad) * dx - Math.sin(rad) * dy;
+        const ry = Math.sin(rad) * dx + Math.cos(rad) * dy;
+        return { x: cx + rx, y: cy + ry };
+      }
+
+      // 渲染浮动按钮和控制点
+      function renderFloatingButtons(inst) {
+        // 功能按钮（下方中间）
+        const btnGroup = document.createElement("div");
+        btnGroup.className = "floating-btn-group";
+        // <button class="floating-btn" title="导出" onclick="exportPlant('${inst.id}')">💾</button>
+        btnGroup.innerHTML = `
+        
+        <button class="floating-btn" title="复制" onclick="copyPlant('${inst.id}')">复制</button>
+        <button class="floating-btn" title="删除" onclick="deletePlant('${inst.id}')">删除</button>
+      `;
+        // 位置：图片下方中心
+        const pt = getTransformedPoint(inst, 0, 50);
+        btnGroup.style.left = pt.x + "px";
+        btnGroup.style.top = pt.y + "px";
+        btnGroup.style.position = "absolute";
+        btnGroup.style.transform = `translate(-50%, 0)`;
+        btnGroup.style.zIndex = 300;
+        btnGroup.addEventListener("mousedown", e => e.stopPropagation());
+        potArea.appendChild(btnGroup);
+
+        // 层级按钮（右侧中间）
+        const layerGroup = document.createElement("div");
+        layerGroup.className = "floating-layer-btn-group";
+        layerGroup.innerHTML = `
+        <button class="floating-layer-btn" title="置顶" onclick="toTop('${inst.id}')">置顶</button>
+        <button class="floating-layer-btn" title="上移" onclick="upLayer('${inst.id}')">上移</button>
+        <button class="floating-layer-btn" title="下移" onclick="downLayer('${inst.id}')">下移</button>
+      `;
+        const pt2 = getTransformedPoint(inst, 55, 0);
+        layerGroup.style.left = pt2.x + "px";
+        layerGroup.style.top = pt2.y + "px";
+        layerGroup.style.position = "absolute";
+        layerGroup.style.transform = `translate(0, -50%)`;
+        layerGroup.style.zIndex = 300;
+        layerGroup.addEventListener("mousedown", e => e.stopPropagation());
+        potArea.appendChild(layerGroup);
+
+        // 旋转点（上方中心）
+        const rotate = document.createElement("div");
+        rotate.className = "floating-rotate";
+        rotate.title = "旋转";
+        rotate.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 2v4m0 0a8 8 0 1 1-8 8" stroke="#2a4" stroke-width="2" fill="none"/><polygon points="12,2 9,6 15,6" fill="#2a4"/></svg>`;
+        const pt3 = getTransformedPoint(inst, 0, -50);
+        rotate.style.left = pt3.x + "px";
+        rotate.style.top = pt3.y + "px";
+        rotate.style.transform = `translate(-50%, -50%)`;
+        rotate.style.zIndex = 300;
+        // 旋转事件
+        let startAngle = 0,
+          startRotate = 0,
+          rotating = false;
+        rotate.addEventListener("mousedown", function(e) {
+          e.stopPropagation();
+          const cx = pt3.x,
+            cy = pt3.y + 50; // 图片中心
+          startRotate = inst.rotate;
+          startAngle =
+            (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+          rotating = true;
+          function moveHandler(ev) {
+            if (!rotating) return;
+            const angle =
+              (Math.atan2(ev.clientY - cy, ev.clientX - cx) * 180) / Math.PI;
+            inst.rotate = startRotate + angle - startAngle;
+            renderPlantsOnPot();
+          }
+          function upHandler(ev) {
+            rotating = false;
+            document.removeEventListener("mousemove", moveHandler);
+            document.removeEventListener("mouseup", upHandler);
+          }
+          document.addEventListener("mousemove", moveHandler);
+          document.addEventListener("mouseup", upHandler);
+        });
+        // 触屏旋转
+        rotate.addEventListener("touchstart", function(e) {
+          e.stopPropagation();
+          const cx = pt3.x,
+            cy = pt3.y + 50;
+          startRotate = inst.rotate;
+          let t = e.touches[0];
+          startAngle =
+            (Math.atan2(t.clientY - cy, t.clientX - cx) * 180) / Math.PI;
+          let touchRotating = true;
+          function moveHandler(ev) {
+            if (!touchRotating) return;
+            let t2 = ev.touches[0];
+            const angle =
+              (Math.atan2(t2.clientY - cy, t2.clientX - cx) * 180) / Math.PI;
+            inst.rotate = startRotate + angle - startAngle;
+            renderPlantsOnPot();
+            ev.preventDefault();
+          }
+          function endHandler(ev) {
+            touchRotating = false;
+            document.removeEventListener("touchmove", moveHandler);
+            document.removeEventListener("touchend", endHandler);
+          }
+          document.addEventListener("touchmove", moveHandler, {
+            passive: false
+          });
+          document.addEventListener("touchend", endHandler);
+        });
+        potArea.appendChild(rotate);
+
+        // 四角缩放点
+        const handles = [
+          { cls: "nw", dx: -35, dy: -35 },
+          { cls: "ne", dx: 35, dy: -35 },
+          { cls: "sw", dx: -35, dy: 35 },
+          { cls: "se", dx: 35, dy: 35 }
+        ];
+        handles.forEach(h => {
+          const handle = document.createElement("div");
+          handle.className = "floating-handle";
+          handle.innerHTML = `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4" fill="#6c6"/></svg>`;
+          const pt4 = getTransformedPoint(inst, h.dx, h.dy);
+          handle.style.left = pt4.x + "px";
+          handle.style.top = pt4.y + "px";
+          handle.style.transform = `translate(-50%, -50%)`;
+          // 缩放事件
+          let startScale = 1,
+            startX = 0,
+            startY = 0,
+            resizing = false;
+          handle.addEventListener("mousedown", function(e) {
+            e.stopPropagation();
+            startScale = inst.scale;
+            startX = e.clientX;
+            startY = e.clientY;
+            resizing = true;
+            function moveHandler(ev) {
+              if (!resizing) return;
+              let dx = (ev.clientX - startX) * (h.dx > 0 ? 1 : -1);
+              let dy = (ev.clientY - startY) * (h.dy > 0 ? 1 : -1);
+              let delta = Math.max(dx, dy);
+              let newScale = Math.max(0.2, startScale + delta / 100);
+              inst.scale = newScale;
+              renderPlantsOnPot();
+            }
+            function upHandler(ev) {
+              resizing = false;
+              document.removeEventListener("mousemove", moveHandler);
+              document.removeEventListener("mouseup", upHandler);
+            }
+            document.addEventListener("mousemove", moveHandler);
+            document.addEventListener("mouseup", upHandler);
+          });
+          // 触屏缩放
+          handle.addEventListener("touchstart", function(e) {
+            e.stopPropagation();
+            startScale = inst.scale;
+            let t = e.touches[0];
+            startX = t.clientX;
+            startY = t.clientY;
+            let touchResizing = true;
+            function moveHandler(ev) {
+              if (!touchResizing) return;
+              let t2 = ev.touches[0];
+              let dx = (t2.clientX - startX) * (h.dx > 0 ? 1 : -1);
+              let dy = (t2.clientY - startY) * (h.dy > 0 ? 1 : -1);
+              let delta = Math.max(dx, dy);
+              let newScale = Math.max(0.2, startScale + delta / 100);
+              inst.scale = newScale;
+              renderPlantsOnPot();
+              ev.preventDefault();
+            }
+            function endHandler(ev) {
+              touchResizing = false;
+              document.removeEventListener("touchmove", moveHandler);
+              document.removeEventListener("touchend", endHandler);
+            }
+            document.addEventListener("touchmove", moveHandler, {
+              passive: false
+            });
+            document.addEventListener("touchend", endHandler);
+          });
+          potArea.appendChild(handle);
+        });
+      }
+
+      // 拖动/缩放/旋转时，更新浮动按钮位置
+      function updateFloatingButtons(inst) {
+        // 只更新位置，不重新渲染
+        const btnGroup = potArea.querySelector(".floating-btn-group");
+        const layerGroup = potArea.querySelector(".floating-layer-btn-group");
+        const rotate = potArea.querySelector(".floating-rotate");
+        const handles = Array.from(
+          potArea.querySelectorAll(".floating-handle")
+        );
+        if (btnGroup) {
+          const pt = getTransformedPoint(inst, 0, 50);
+          btnGroup.style.left = pt.x + "px";
+          btnGroup.style.top = pt.y + "px";
+        }
+        if (layerGroup) {
+          const pt2 = getTransformedPoint(inst, 55, 0);
+          layerGroup.style.left = pt2.x + "px";
+          layerGroup.style.top = pt2.y + "px";
+        }
+        if (rotate) {
+          const pt3 = getTransformedPoint(inst, 0, -50);
+          rotate.style.left = pt3.x + "px";
+          rotate.style.top = pt3.y + "px";
+        }
+        const handlePos = [
+          { dx: -35, dy: -35 },
+          { dx: 35, dy: -35 },
+          { dx: -35, dy: 35 },
+          { dx: 35, dy: 35 }
+        ];
+        handles.forEach((handle, i) => {
+          const pt4 = getTransformedPoint(
+            inst,
+            handlePos[i].dx,
+            handlePos[i].dy
+          );
+          handle.style.left = pt4.x + "px";
+          handle.style.top = pt4.y + "px";
+        });
+      }
+
+      // 取消选中
+      document.body.addEventListener("mousedown", e => {
+        if (!e.target.closest(".plant-on-pot-wrapper")) {
+          selectedId = null;
+          renderPlantsOnPot();
+        }
+      });
+
+      // 功能按钮实现
+      window.deletePlant = function(id) {
+        plantInstances = plantInstances.filter(p => p.id !== id);
+        selectedId = null;
+        renderPlantsOnPot();
+      };
+      window.copyPlant = function(id) {
+        const inst = plantInstances.find(p => p.id === id);
+        if (inst) {
+          plantInstances.push({
+            ...inst,
+            id: uuid(),
+            x: inst.x + 20,
+            y: inst.y + 20,
+            z: plantInstances.length + 1
+          });
+          renderPlantsOnPot();
+        }
+      };
+      window.exportPlant = function(id) {
+        const inst = plantInstances.find(p => p.id === id);
+        if (inst) {
+          const link = document.createElement("a");
+          link.href = plants[inst.plantIdx].img;
+          link.download = plants[inst.plantIdx].name + ".png";
+          link.click();
+        }
+      };
+      window.toTop = function(id) {
+        const maxZ = Math.max(...plantInstances.map(p => p.z));
+        const inst = plantInstances.find(p => p.id === id);
+        if (inst) {
+          inst.z = maxZ + 1;
+          renderPlantsOnPot();
+        }
+      };
+      window.upLayer = function(id) {
+        const inst = plantInstances.find(p => p.id === id);
+        if (inst) {
+          const above = plantInstances
+            .filter(p => p.z > inst.z)
+            .sort((a, b) => a.z - b.z)[0];
+          if (above) {
+            [inst.z, above.z] = [above.z, inst.z];
+            renderPlantsOnPot();
+          }
+        }
+      };
+      window.downLayer = function(id) {
+        const inst = plantInstances.find(p => p.id === id);
+        if (inst) {
+          // 花盆z=0，不能再低
+          const below = plantInstances
+            .filter(p => p.z < inst.z)
+            .sort((a, b) => b.z - a.z)[0];
+          if (below && below.z > 0) {
+            [inst.z, below.z] = [below.z, inst.z];
+            renderPlantsOnPot();
+          }
+        }
+      };
+
+      // 初始化
+      renderPlantsOnPot();
+    </script>
+  </body>
+</html>
+``` --- **核心优化点说明：** -
+所有按钮、控制点都**不在图片缩放容器内**，而是绝对定位到 pot-area，位置用 JS
+计算，视觉上始终大小不变。 -
+按钮美观，且无论图片怎么缩放、旋转，按钮都不会“跟着缩放一帧”。 -
+拖动、缩放、旋转时，按钮位置实时更新。 - 兼容 PC 和触屏。
+如需进一步美化或功能扩展，欢迎继续提问！

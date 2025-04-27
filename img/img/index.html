@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>植物图片编辑器</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="toolbar">
+        <div class="plant-selector">
+          <img
+            src="./images/plant1.jpg"
+            class="plant-item"
+            draggable="true"
+            alt="多肉植物"
+          />
+          <img
+            src="./images/plant2.jpg"
+            class="plant-item"
+            draggable="true"
+            alt="小树"
+          />
+          <img
+            src="./images/plant3.jpg"
+            class="plant-item"
+            draggable="true"
+            alt="蕨类植物"
+          />
+          <img
+            src="./images/plant4.jpg"
+            class="plant-item"
+            draggable="true"
+            alt="小绿植"
+          />
+        </div>
+      </div>
+      <div class="canvas-container">
+        <div class="canvas" id="canvas">
+          <div class="pot-container">
+            <img src="./images/plant.jpg" class="pot" alt="花盆" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
