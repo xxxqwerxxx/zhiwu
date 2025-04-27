@@ -1,13 +1,3 @@
-你的需求是： - 图片拖拽、缩放、旋转、层级、按钮等功能要流畅、无冲突，且操作时无
-bug，能立刻响应。 - 目前的 bug 主要是： -
-拖动、缩放、旋转等操作时，选中状态、按钮、控制点等渲染不及时或丢失。 -
-鼠标/触摸事件冲突，导致操作不流畅。 --- ## 优化思路 1. **操作时不频繁
-render**，而是操作结束后再 render，避免事件冲突。 2. **mousedown/touchstart
-只做选中，move/up 只做操作，不触发 renderPlantsOnPot**，只在操作结束后 render。
-3. **所有操作时，按钮和控制点始终跟随图片，不会丢失。** 4.
-**拖动、缩放、旋转时，阻止冒泡和默认事件，避免误触。** 5.
-**选中图片时，只有一个图片有按钮和控制点。** 6. **PC 和触屏都支持。** --- ##
-优化后的完整代码 ```html
 <!DOCTYPE html>
 <html lang="zh">
   <head>
@@ -250,7 +240,7 @@ render**，而是操作结束后再 render，避免事件冲突。 2. **mousedow
         <div class="pot-area" id="potArea">
           <img
             class="pot-img"
-            src="./images/plant.jpg"
+            src="https://img.icons8.com/color/96/cactus.png"
             alt="花盆"
             draggable="false"
           />
