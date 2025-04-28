@@ -80,96 +80,74 @@
       .draggable-plant.selected {
         box-shadow: 0 0 0 3px #4caf50;
       }
-      .action-buttons {
+
+      /* 按钮样式 */
+      .fixed-btn-bar {
         position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
         display: flex;
-        gap: 8px;
-        bottom: -40px;
-        z-index: 10;
+        gap: 10px;
+        z-index: 100;
+        pointer-events: auto;
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 24px;
+        box-shadow: 0 2px 8px #0001;
+        align-items: center;
+        border: 1.5px solid #e0ffe0;
+        padding: 6px 14px;
+        transition: top 0.1s, left 0.1s;
       }
-      .layer-buttons {
-        position: absolute;
-        right: -40px;
-        top: 50%;
-        transform: translateY(-50%);
-        display: flex;
+      .fixed-btn-bar.top {
+        /* 上方缩放/旋转按钮 */
+        transform: translate(-50%, -100%);
+      }
+      .fixed-btn-bar.bottom {
+        /* 下方操作按钮 */
+        transform: translate(-50%, 10px);
+      }
+      .fixed-btn-bar.bottom.above {
+        /* 当下方空间不足时，显示在图片上方 */
+        transform: translate(-50%, -60px);
+      }
+      .fixed-btn-bar.right {
         flex-direction: column;
-        gap: 8px;
-        z-index: 10;
+        transform: translate(10px, -50%);
+        padding: 10px 6px;
       }
+      .transform-btn,
       .action-btn,
       .layer-btn {
-        background: #fff;
-        border: 1px solid #4caf50;
-        color: #4caf50;
-        border-radius: 50%;
         width: 32px;
         height: 32px;
-        font-size: 16px;
+        min-width: 32px;
+        min-height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: linear-gradient(145deg, #e0ffe0 60%, #b2f2c9 100%);
+        color: #388e3c;
+        font-size: 20px;
+        font-family: inherit;
+        box-shadow: 0 2px 8px #0002;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        box-shadow: 0 1px 4px #0002;
-        transition: background 0.2s, color 0.2s;
+        transition: background 0.2s, color 0.2s, box-shadow 0.2s;
         outline: none;
+        border: 1.5px solid #4caf50;
+        margin: 0;
+        padding: 0;
+        position: relative;
       }
+      .transform-btn:hover,
       .action-btn:hover,
       .layer-btn:hover,
+      .transform-btn:active,
       .action-btn:active,
       .layer-btn:active {
-        background: #4caf50;
+        background: linear-gradient(145deg, #4caf50 60%, #388e3c 100%);
         color: #fff;
-      }
-      .resize-handle,
-      .rotate-handle {
-        position: absolute;
-        width: 16px;
-        height: 16px;
-        background: #fff;
-        border: 2px solid #4caf50;
-        border-radius: 50%;
-        z-index: 20;
-        cursor: pointer;
-        box-shadow: 0 1px 4px #0002;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .resize-handle {
-        background: #fff;
-      }
-      .rotate-handle {
-        top: -28px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #4caf50;
-        border: 2px solid #fff;
-        color: #fff;
-        font-size: 14px;
-        cursor: grab;
-      }
-      .resize-tl {
-        top: -8px;
-        left: -8px;
-        cursor: nwse-resize;
-      }
-      .resize-tr {
-        top: -8px;
-        right: -8px;
-        cursor: nesw-resize;
-      }
-      .resize-bl {
-        bottom: -8px;
-        left: -8px;
-        cursor: nesw-resize;
-      }
-      .resize-br {
-        bottom: -8px;
-        right: -8px;
-        cursor: nwse-resize;
+        border-color: #388e3c;
+        box-shadow: 0 4px 12px #4caf5040;
       }
       @media (max-width: 600px) {
         .pot {
@@ -270,13 +248,15 @@
         el.style.zIndex = ++zIndexCounter;
         el.style.width = "80px";
         el.style.height = "80px";
-        el.style.transform = "rotate(0deg)";
+        el.dataset.scale = 1;
+        el.dataset.rotate = 0;
+        el.style.transform = "rotate(0deg) scale(1)";
         el.innerHTML = `<img src="${plant.img}" style="width:100%;height:100%;object-fit:contain;pointer-events:none;">`;
         workspace.appendChild(el);
         makePlantInteractive(el, plant);
       }
 
-      // 拖拽、缩放、旋转、选中、按钮等交互
+      // 拖拽、选中、按钮等交互
       let selectedPlant = null;
 
       function makePlantInteractive(el, plantData) {
@@ -291,8 +271,9 @@
 
         function startDrag(e) {
           if (
-            e.target.classList.contains("resize-handle") ||
-            e.target.classList.contains("rotate-handle")
+            e.target.classList.contains("transform-btn") ||
+            e.target.classList.contains("action-btn") ||
+            e.target.classList.contains("layer-btn")
           )
             return;
           e.preventDefault();
@@ -319,6 +300,7 @@
           const clientY = e.touches ? e.touches[0].clientY : e.clientY;
           el.style.left = offsetX + (clientX - startX) + "px";
           el.style.top = offsetY + (clientY - startY) + "px";
+          updateButtonPositions(el);
         }
         function stopDrag(e) {
           dragging = false;
@@ -362,204 +344,180 @@
       function showActionHandles(el, plantData) {
         removeActionHandles(el);
 
-        // 缩放点
-        ["tl", "tr", "bl", "br"].forEach(pos => {
-          const handle = document.createElement("div");
-          handle.className = "resize-handle resize-" + pos;
-          handle.addEventListener("mousedown", e => startResize(e, pos, el));
-          handle.addEventListener("touchstart", e => startResize(e, pos, el), {
-            passive: false
-          });
-          el.appendChild(handle);
+        // 计算图片中心和四周
+        const rect = el.getBoundingClientRect();
+        const workspaceRect = workspace.getBoundingClientRect();
+        const left = rect.left - workspaceRect.left;
+        const top = rect.top - workspaceRect.top;
+        const width = rect.width;
+        const height = rect.height;
+
+        // 上方缩放/旋转按钮
+        const transformBar = document.createElement("div");
+        transformBar.className = "fixed-btn-bar top";
+        workspace.appendChild(transformBar);
+
+        // 缩放/旋转事件
+        transformBar.innerHTML = `
+        <button class="transform-btn" title="放大">＋</button>
+        <button class="transform-btn" title="缩小">－</button>
+        <button class="transform-btn" title="左旋转">⟲</button>
+        <button class="transform-btn" title="右旋转">⟳</button>
+      `;
+        const [
+          btnZoomIn,
+          btnZoomOut,
+          btnRotateLeft,
+          btnRotateRight
+        ] = transformBar.children;
+        btnZoomIn.addEventListener("pointerdown", e => {
+          e.stopPropagation();
+          scalePlant(el, 1.15);
+          updateButtonPositions(el);
+        });
+        btnZoomOut.addEventListener("pointerdown", e => {
+          e.stopPropagation();
+          scalePlant(el, 1 / 1.15);
+          updateButtonPositions(el);
+        });
+        btnRotateLeft.addEventListener("pointerdown", e => {
+          e.stopPropagation();
+          rotatePlant(el, -45);
+          updateButtonPositions(el);
+        });
+        btnRotateRight.addEventListener("pointerdown", e => {
+          e.stopPropagation();
+          rotatePlant(el, 45);
+          updateButtonPositions(el);
         });
 
-        // 旋转点
-        const rotateHandle = document.createElement("div");
-        rotateHandle.className = "rotate-handle";
-        rotateHandle.textContent = "⟳";
-        rotateHandle.addEventListener("mousedown", e => startRotate(e, el));
-        rotateHandle.addEventListener("touchstart", e => startRotate(e, el), {
-          passive: false
-        });
-        el.appendChild(rotateHandle);
-
-        // 下方按钮（已移除导出按钮）
+        // 下方按钮（复制/删除），如果下方空间不足则显示在上方
         const actionBar = document.createElement("div");
-        actionBar.className = "action-buttons";
+        actionBar.className = "fixed-btn-bar bottom";
+        workspace.appendChild(actionBar);
         actionBar.innerHTML = `
         <button class="action-btn" title="复制">📋</button>
         <button class="action-btn" title="删除">🗑️</button>
       `;
-        el.appendChild(actionBar);
-
         // 右侧层级按钮
         const layerBar = document.createElement("div");
-        layerBar.className = "layer-buttons";
+        layerBar.className = "fixed-btn-bar right";
+        workspace.appendChild(layerBar);
         layerBar.innerHTML = `
         <button class="layer-btn" title="置顶">🔝</button>
         <button class="layer-btn" title="上移">⬆️</button>
         <button class="layer-btn" title="下移">⬇️</button>
       `;
-        el.appendChild(layerBar);
-
-        // 按钮事件（pointerdown优先，防止失焦）
+        // 按钮事件
         actionBar.children[0].addEventListener("pointerdown", e => {
           e.stopPropagation();
-          console.log("点击了复制按钮");
           copyPlant(el);
         });
         actionBar.children[1].addEventListener("pointerdown", e => {
           e.stopPropagation();
-          console.log("点击了删除按钮");
           el.remove();
           removeActionHandles(el);
           selectedPlant = null;
         });
         layerBar.children[0].addEventListener("pointerdown", e => {
           e.stopPropagation();
-          console.log("点击了置顶按钮");
           el.style.zIndex = ++zIndexCounter;
+          updateButtonPositions(el);
         });
         layerBar.children[1].addEventListener("pointerdown", e => {
           e.stopPropagation();
-          console.log("点击了上移按钮");
           el.style.zIndex = Math.min(++el.style.zIndex, zIndexCounter);
+          updateButtonPositions(el);
         });
         layerBar.children[2].addEventListener("pointerdown", e => {
           e.stopPropagation();
-          console.log("点击了下移按钮");
           el.style.zIndex = Math.max(--el.style.zIndex, 1);
+          updateButtonPositions(el);
         });
+
+        // 记录按钮元素，便于后续更新位置
+        el._btnBars = [transformBar, actionBar, layerBar];
+        updateButtonPositions(el);
       }
 
       function removeActionHandles(el) {
         if (!el) return;
-        Array.from(
-          el.querySelectorAll(
-            ".resize-handle, .rotate-handle, .action-buttons, .layer-buttons"
-          )
-        ).forEach(e => e.remove());
+        if (el._btnBars) {
+          el._btnBars.forEach(bar => bar && bar.remove());
+          el._btnBars = null;
+        }
       }
 
       // 缩放
-      function startResize(e, pos, el) {
-        e.preventDefault();
-        e.stopPropagation();
-        selectPlant(el);
-        let startW = el.offsetWidth,
-          startH = el.offsetHeight;
-        let startL = el.offsetLeft,
-          startT = el.offsetTop;
-        let startX = e.touches ? e.touches[0].clientX : e.clientX;
-        let startY = e.touches ? e.touches[0].clientY : e.clientY;
-        function onResize(ev) {
-          const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-          const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-          let dx = clientX - startX,
-            dy = clientY - startY;
-          let newW = startW,
-            newH = startH,
-            newL = startL,
-            newT = startT;
-          if (pos.includes("r")) newW = Math.max(40, startW + dx);
-          if (pos.includes("l")) {
-            newW = Math.max(40, startW - dx);
-            newL = startL + dx;
-          }
-          if (pos.includes("b")) newH = Math.max(40, startH + dy);
-          if (pos.includes("t")) {
-            newH = Math.max(40, startH - dy);
-            newT = startT + dy;
-          }
-          el.style.width = newW + "px";
-          el.style.height = newH + "px";
-          el.style.left = newL + "px";
-          el.style.top = newT + "px";
-        }
-        function stopResize(ev) {
-          document.removeEventListener(
-            ev.type === "touchend" ? "touchmove" : "mousemove",
-            onResize
-          );
-          document.removeEventListener(
-            ev.type === "touchend" ? "touchend" : "mouseup",
-            stopResize
-          );
-        }
-        document.addEventListener(
-          e.type === "touchstart" ? "touchmove" : "mousemove",
-          onResize,
-          { passive: false }
-        );
-        document.addEventListener(
-          e.type === "touchstart" ? "touchend" : "mouseup",
-          stopResize
-        );
+      function scalePlant(el, factor) {
+        let scale = parseFloat(el.dataset.scale || 1);
+        scale *= factor;
+        scale = Math.max(0.3, Math.min(3, scale));
+        el.dataset.scale = scale;
+        updateTransform(el);
       }
 
       // 旋转
-      function startRotate(e, el) {
-        e.preventDefault();
-        e.stopPropagation();
-        selectPlant(el);
-        let rect = el.getBoundingClientRect();
-        let centerX = rect.left + rect.width / 2;
-        let centerY = rect.top + rect.height / 2;
-        let startAngle = getRotation(el);
-        function getAngle(clientX, clientY) {
-          return (
-            (Math.atan2(clientY - centerY, clientX - centerX) * 180) / Math.PI
-          );
-        }
-        let startClientX = e.touches ? e.touches[0].clientX : e.clientX;
-        let startClientY = e.touches ? e.touches[0].clientY : e.clientY;
-        let baseAngle = getAngle(startClientX, startClientY) - startAngle;
-        function onRotate(ev) {
-          const clientX = ev.touches ? ev.touches[0].clientX : ev.clientX;
-          const clientY = ev.touches ? ev.touches[0].clientY : ev.clientY;
-          let angle = getAngle(clientX, clientY) - baseAngle;
-          el.style.transform = `rotate(${angle}deg)`;
-        }
-        function stopRotate(ev) {
-          document.removeEventListener(
-            ev.type === "touchend" ? "touchmove" : "mousemove",
-            onRotate
-          );
-          document.removeEventListener(
-            ev.type === "touchend" ? "touchend" : "mouseup",
-            stopRotate
-          );
-        }
-        document.addEventListener(
-          e.type === "touchstart" ? "touchmove" : "mousemove",
-          onRotate,
-          { passive: false }
-        );
-        document.addEventListener(
-          e.type === "touchstart" ? "touchend" : "mouseup",
-          stopRotate
-        );
+      function rotatePlant(el, delta) {
+        let rotate = parseFloat(el.dataset.rotate || 0);
+        rotate = (rotate + delta) % 360;
+        el.dataset.rotate = rotate;
+        updateTransform(el);
       }
-      function getRotation(el) {
-        const st = window.getComputedStyle(el, null);
-        const tr = st.getPropertyValue("transform");
-        if (tr === "none") return 0;
-        const values = tr
-          .split("(")[1]
-          .split(")")[0]
-          .split(",");
-        const a = values[0],
-          b = values[1];
-        return Math.round(Math.atan2(b, a) * (180 / Math.PI));
+
+      function updateTransform(el) {
+        const scale = el.dataset.scale || 1;
+        const rotate = el.dataset.rotate || 0;
+        el.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+        updateButtonPositions(el);
+      }
+
+      // 按钮位置更新
+      function updateButtonPositions(el) {
+        if (!el._btnBars) return;
+        const [transformBar, actionBar, layerBar] = el._btnBars;
+        const rect = el.getBoundingClientRect();
+        const workspaceRect = workspace.getBoundingClientRect();
+        const left = rect.left - workspaceRect.left;
+        const top = rect.top - workspaceRect.top;
+        const width = rect.width;
+        const height = rect.height;
+
+        // 上方
+        transformBar.style.left = left + width / 2 + "px";
+        transformBar.style.top = top + "px";
+
+        // 下方（优先下方，若下方空间不足则上方）
+        const actionBarHeight = 44; // 32+padding
+        const spaceBelow = workspaceRect.height - (top + height);
+        if (spaceBelow < actionBarHeight + 10) {
+          actionBar.classList.add("above");
+          actionBar.style.left = left + width / 2 + "px";
+          actionBar.style.top = top + "px";
+        } else {
+          actionBar.classList.remove("above");
+          actionBar.style.left = left + width / 2 + "px";
+          actionBar.style.top = top + height + "px";
+        }
+
+        // 右侧
+        layerBar.style.left = left + width + "px";
+        layerBar.style.top = top + height / 2 + "px";
       }
 
       // 失焦优化（pointerdown，优先于click/mousedown）
       workspace.addEventListener("pointerdown", function(e) {
-        // 只在点击空白处或非选中元素时失焦
-        if (selectedPlant && !selectedPlant.contains(e.target)) {
-          selectedPlant.classList.remove("selected");
-          removeActionHandles(selectedPlant);
-          selectedPlant = null;
+        if (selectedPlant) {
+          if (
+            selectedPlant._btnBars &&
+            selectedPlant._btnBars.some(bar => bar.contains(e.target))
+          )
+            return;
+          if (!selectedPlant.contains(e.target)) {
+            selectedPlant.classList.remove("selected");
+            removeActionHandles(selectedPlant);
+            selectedPlant = null;
+          }
         }
       });
 
@@ -570,8 +528,29 @@
         const x = rect.left - workspaceRect.left + 30;
         const y = rect.top - workspaceRect.top + 30;
         const img = el.querySelector("img").getAttribute("src");
-        createDraggablePlant({ img }, x, y);
+        const scale = el.dataset.scale || 1;
+        const rotate = el.dataset.rotate || 0;
+        const newEl = document.createElement("div");
+        newEl.className = "draggable-plant";
+        newEl.style.left = x + "px";
+        newEl.style.top = y + "px";
+        newEl.style.zIndex = ++zIndexCounter;
+        newEl.style.width = el.style.width;
+        newEl.style.height = el.style.height;
+        newEl.dataset.scale = scale;
+        newEl.dataset.rotate = rotate;
+        newEl.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+        newEl.innerHTML = `<img src="${img}" style="width:100%;height:100%;object-fit:contain;pointer-events:none;">`;
+        workspace.appendChild(newEl);
+        makePlantInteractive(newEl, { img });
+        // 选中新复制的图片
+        setTimeout(() => selectPlant(newEl, { img }), 0);
       }
+
+      // 保证窗口缩放时按钮位置也能跟随
+      window.addEventListener("resize", function() {
+        if (selectedPlant) updateButtonPositions(selectedPlant);
+      });
     </script>
   </body>
 </html>
