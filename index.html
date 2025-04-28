@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <title>植物拖拽花盆</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
     <style>
       html,
       body {
@@ -21,11 +24,11 @@
       }
       .plant-selector {
         height: 15vh;
-        min-height: 90px;
+        min-height: 110px;
         background: #e0ffe0;
         overflow-x: auto;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         padding: 10px;
         box-sizing: border-box;
       }
@@ -39,23 +42,46 @@
         height: 60px;
         object-fit: contain;
         border-radius: 8px;
-        cursor: grab;
         background: #fff;
         box-shadow: 0 2px 6px #0001;
         display: block;
         margin: 0 auto;
+        margin-bottom: 4px;
       }
       .plant-item .name {
         font-size: 14px;
-        margin-top: 4px;
+        margin-top: 0;
         color: #333;
+      }
+      .plant-item .copy-btn {
+        margin-top: 4px;
+        background: linear-gradient(145deg, #e0ffe0 60%, #b2f2c9 100%);
+        color: #388e3c;
+        border: 1.5px solid #4caf50;
+        border-radius: 16px;
+        font-size: 14px;
+        padding: 2px 16px;
+        cursor: pointer;
+        box-shadow: 0 1px 4px #0001;
+        transition: background 0.2s, color 0.2s, border 0.2s;
+        outline: none;
+        display: inline-block;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+      }
+      .plant-item .copy-btn:hover,
+      .plant-item .copy-btn:active {
+        background: linear-gradient(145deg, #4caf50 60%, #388e3c 100%);
+        color: #fff;
+        border-color: #388e3c;
       }
       .workspace {
         height: 85vh;
         position: relative;
-        background: #fff;
         overflow: hidden;
         flex: 1;
+        background: url("./images/plant.jpg") center center/cover no-repeat;
       }
       .pot {
         position: absolute;
@@ -97,15 +123,12 @@
         transition: top 0.1s, left 0.1s;
       }
       .fixed-btn-bar.top {
-        /* 上方缩放/旋转按钮 */
         transform: translate(-50%, -100%);
       }
       .fixed-btn-bar.bottom {
-        /* 下方操作按钮 */
         transform: translate(-50%, 10px);
       }
       .fixed-btn-bar.bottom.above {
-        /* 当下方空间不足时，显示在图片上方 */
         transform: translate(-50%, -60px);
       }
       .fixed-btn-bar.right {
@@ -137,6 +160,9 @@
         margin: 0;
         padding: 0;
         position: relative;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
       }
       .transform-btn:hover,
       .action-btn:hover,
@@ -164,80 +190,62 @@
     <div class="container">
       <div class="plant-selector" id="plantSelector"></div>
       <div class="workspace" id="workspace">
-        <img src="images/plant.jpg" class="pot" id="pot" draggable="false" />
+        <img src="./images/pot.jpg" class="pot" id="pot" draggable="false" />
       </div>
     </div>
     <script>
+      // 禁止双击缩放（iOS/华为等平台）
+      let lastTouchEnd = 0;
+      document.addEventListener(
+        "touchend",
+        function(event) {
+          const now = Date.now();
+          if (now - lastTouchEnd <= 350) {
+            event.preventDefault();
+          }
+          lastTouchEnd = now;
+        },
+        { passive: false }
+      );
+
+      document.addEventListener(
+        "dblclick",
+        function(e) {
+          e.preventDefault();
+        },
+        { passive: false }
+      );
+
       // 植物数据（使用图片）
       const plants = [
-        { name: "玫瑰", img: "images/plant1.jpg" },
-        { name: "仙人掌", img: "images/plant2.jpg" },
-        { name: "向日葵", img: "images/plant3.jpg" }
+        { name: "玫瑰", img: "./images/plant1.jpg" },
+        { name: "仙人掌", img: "./images/plant2.jpg" },
+        { name: "向日葵", img: "./images/plant3.jpg" }
       ];
 
       // 渲染植物选择区
       const plantSelector = document.getElementById("plantSelector");
-      plants.forEach(plant => {
+      plants.forEach((plant, idx) => {
         const item = document.createElement("div");
         item.className = "plant-item";
-        item.innerHTML = `<img src="${plant.img}" draggable="true" data-name="${plant.name}" data-img="${plant.img}">
-                        <div class="name">${plant.name}</div>`;
+        item.innerHTML = `
+        <img src="${plant.img}">
+        <div class="name">${plant.name}</div>
+        <button class="copy-btn" type="button">复制</button>
+      `;
         plantSelector.appendChild(item);
 
-        // 拖拽事件
-        item.querySelector("img").addEventListener("dragstart", e => {
-          e.dataTransfer.setData("plant", JSON.stringify(plant));
-        });
-
-        // 触摸拖拽（平板）
-        item.querySelector("img").addEventListener("touchstart", function(e) {
-          startTouchDrag(e, plant);
+        // 复制按钮事件
+        item.querySelector(".copy-btn").addEventListener("click", function(e) {
+          e.stopPropagation();
+          // 固定左上角（比如20,20）
+          createDraggablePlant(plant, 20, 20);
         });
       });
 
-      // 下方区域接收拖拽
+      // 下方区域接收拖拽（已禁用拖拽复制功能）
       const workspace = document.getElementById("workspace");
       let zIndexCounter = 1;
-
-      workspace.addEventListener("dragover", e => e.preventDefault());
-      workspace.addEventListener("drop", e => {
-        e.preventDefault();
-        const plant = JSON.parse(e.dataTransfer.getData("plant"));
-        const x = e.clientX - workspace.getBoundingClientRect().left - 40;
-        const y = e.clientY - workspace.getBoundingClientRect().top - 40;
-        createDraggablePlant(plant, x, y);
-      });
-
-      // 触摸拖拽辅助
-      let touchDragData = null;
-      function startTouchDrag(e, plant) {
-        touchDragData = {
-          plant,
-          startX: e.touches[0].clientX,
-          startY: e.touches[0].clientY
-        };
-        document.addEventListener("touchmove", onTouchMove);
-        document.addEventListener("touchend", onTouchEnd);
-      }
-      function onTouchMove(e) {}
-      function onTouchEnd(e) {
-        if (touchDragData) {
-          const workspaceRect = workspace.getBoundingClientRect();
-          const x = e.changedTouches[0].clientX - workspaceRect.left - 40;
-          const y = e.changedTouches[0].clientY - workspaceRect.top - 40;
-          if (
-            e.changedTouches[0].clientX > workspaceRect.left &&
-            e.changedTouches[0].clientX < workspaceRect.right &&
-            e.changedTouches[0].clientY > workspaceRect.top &&
-            e.changedTouches[0].clientY < workspaceRect.bottom
-          ) {
-            createDraggablePlant(touchDragData.plant, x, y);
-          }
-          touchDragData = null;
-          document.removeEventListener("touchmove", onTouchMove);
-          document.removeEventListener("touchend", onTouchEnd);
-        }
-      }
 
       // 创建可操作的植物图片
       function createDraggablePlant(plant, x, y) {
@@ -382,12 +390,12 @@
         });
         btnRotateLeft.addEventListener("pointerdown", e => {
           e.stopPropagation();
-          rotatePlant(el, -45);
+          rotatePlant(el, -10);
           updateButtonPositions(el);
         });
         btnRotateRight.addEventListener("pointerdown", e => {
           e.stopPropagation();
-          rotatePlant(el, 45);
+          rotatePlant(el, 10);
           updateButtonPositions(el);
         });
 
@@ -523,17 +531,14 @@
 
       // 复制
       function copyPlant(el) {
-        const rect = el.getBoundingClientRect();
-        const workspaceRect = workspace.getBoundingClientRect();
-        const x = rect.left - workspaceRect.left + 30;
-        const y = rect.top - workspaceRect.top + 30;
+        // 复制到左上角
         const img = el.querySelector("img").getAttribute("src");
         const scale = el.dataset.scale || 1;
         const rotate = el.dataset.rotate || 0;
         const newEl = document.createElement("div");
         newEl.className = "draggable-plant";
-        newEl.style.left = x + "px";
-        newEl.style.top = y + "px";
+        newEl.style.left = "20px";
+        newEl.style.top = "20px";
         newEl.style.zIndex = ++zIndexCounter;
         newEl.style.width = el.style.width;
         newEl.style.height = el.style.height;
@@ -543,7 +548,6 @@
         newEl.innerHTML = `<img src="${img}" style="width:100%;height:100%;object-fit:contain;pointer-events:none;">`;
         workspace.appendChild(newEl);
         makePlantInteractive(newEl, { img });
-        // 选中新复制的图片
         setTimeout(() => selectPlant(newEl, { img }), 0);
       }
 
