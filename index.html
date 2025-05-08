@@ -23,7 +23,7 @@
         flex-direction: column;
       }
       .plant-selector {
-        height: 15vh;
+        height: 25vh;
         min-height: 110px;
         background: #e0ffe0;
         overflow-x: auto;
@@ -77,11 +77,11 @@
         border-color: #388e3c;
       }
       .workspace {
-        height: 85vh;
+        height: 75vh;
         position: relative;
         overflow: hidden;
         flex: 1;
-        background: url("images/plant.jpg") center center/cover no-repeat;
+        background: url("images/plant.png") center center/cover no-repeat;
       }
       .pot {
         position: absolute;
@@ -190,7 +190,8 @@
     <div class="container">
       <div class="plant-selector" id="plantSelector"></div>
       <div class="workspace" id="workspace">
-        <img src="images/pot.jpg" class="pot" id="pot" draggable="false" />
+        <img src="images/pot.png" class="pot" id="pot" draggable="false" />
+        <!-- <img src="images/pot.jpg" class="pot" id="pot" draggable="false" /> -->
       </div>
     </div>
     <script>
@@ -218,9 +219,15 @@
 
       // 植物数据（使用图片）
       const plants = [
-        { name: "玫瑰", img: "images/plant1.jpg" },
-        { name: "仙人掌", img: "images/plant2.jpg" },
-        { name: "向日葵", img: "images/plant3.jpg" }
+        { name: "多肉1", img: "images/多肉1.png" },
+        { name: "多肉2", img: "images/多肉2.png" },
+        { name: "金边六月雪", img: "images/金边六月雪.png" },
+        { name: "狼尾蕨", img: "images/狼尾蕨.png" },
+        { name: "罗汉松", img: "images/罗汉松.png" },
+        { name: "沙漠玫瑰", img: "images/沙漠玫瑰.png" },
+        { name: "苔藓", img: "images/苔藓.png" },
+        { name: "网纹草", img: "images/网纹草.png" },
+        { name: "酢浆草", img: "images/酢浆草.png" }
       ];
 
       // 渲染植物选择区
